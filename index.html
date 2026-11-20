@@ -75,8 +75,29 @@
       installStatus.textContent = 'Portal berhasil dipasang.';
     });
 
+    function isPortalFrameSource(source) {
+      const pending = [portalFrame.contentWindow];
+      const visited = new Set();
+
+      while (pending.length) {
+        const current = pending.pop();
+        if (current === source) return true;
+        if (visited.has(current)) continue;
+        visited.add(current);
+
+        try {
+          for (let index = 0; index < current.frames.length; index += 1) {
+            pending.push(current.frames[index]);
+          }
+        } catch (error) {
+          // Ignore inaccessible frames while checking nested sources.
+        }
+      }
+      return false;
+    }
+
     window.addEventListener('message', (event) => {
-      if (!event.origin.endsWith('.googleusercontent.com')) return;
+      if (!isPortalFrameSource(event.source)) return;
       if (!event.data || event.data.type !== 'PORTAL_INSTALL_REQUEST') return;
       updateInstallDialog();
       installDialog.hidden = false;
