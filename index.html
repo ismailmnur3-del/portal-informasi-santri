@@ -4,18 +4,130 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#047857">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="./manifest.json">
   <title>Portal Resmi Pondok Pesantren Abu Muhammad</title>
   <style>
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
     iframe { display: block; width: 100%; height: 100vh; height: 100dvh; border: 0; }
+    .install-dialog[hidden] { display: none; }
+    .install-dialog { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, .62); font-family: Arial, sans-serif; }
+    .install-card { width: min(100%, 380px); box-sizing: border-box; padding: 26px; border-radius: 20px; background: #fff; color: #1f2937; box-shadow: 0 24px 70px rgba(0,0,0,.28); }
+    .install-card h1 { margin: 0 0 10px; color: #047857; font-size: 21px; }
+    .install-card p { margin: 0 0 20px; font-size: 15px; line-height: 1.55; }
+    .install-card button { display: block; width: 100%; min-height: 48px; margin-top: 10px; border: 0; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
+    #install-action { background: #047857; color: #fff; }
+    #install-action[hidden] { display: none; }
+    #install-close { background: #f1f5f9; color: #334155; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   </style>
 </head>
 <body>
   <iframe
+    id="portal-frame"
     title="Portal Informasi Pondok Pesantren Abu Muhammad"
     src="https://script.google.com/macros/s/AKfycbzlUUKEHycf0VRv0FKZPxZReVvlio4ZdQ8Nz_O78LTL119JZuMY7l4gmhhkcwRVxlET/exec"
     referrerpolicy="strict-origin-when-cross-origin"
     allowfullscreen>
   </iframe>
+
+  <section id="install-dialog" class="install-dialog" role="dialog" aria-modal="true" aria-labelledby="install-title" hidden>
+    <div class="install-card">
+      <h1 id="install-title">Install Portal Santri</h1>
+      <p id="install-message">Chrome akan menampilkan konfirmasi untuk memasang portal ke ponsel.</p>
+      <button id="install-action" type="button" hidden>Install ke Ponsel</button>
+      <button id="install-close" type="button">Kembali ke Portal</button>
+    </div>
+  </section>
+  <p id="install-status" class="sr-only" role="status" aria-live="polite"></p>
+
+  <script>
+    const portalFrame = document.getElementById('portal-frame');
+    const installDialog = document.getElementById('install-dialog');
+    const installMessage = document.getElementById('install-message');
+    const installAction = document.getElementById('install-action');
+    const installStatus = document.getElementById('install-status');
+    const supportsWebInstall = typeof Navigator !== 'undefined' && typeof Navigator.prototype.install === 'function';
+    let deferredInstallPrompt = null;
+
+    function updateInstallDialog() {
+      const promptAvailable = supportsWebInstall || Boolean(deferredInstallPrompt);
+      installAction.hidden = !promptAvailable;
+      if (promptAvailable) {
+        installMessage.textContent = 'Chrome siap memasang portal. Tekan tombol Install ke Ponsel, lalu konfirmasi pada dialog Chrome.';
+      } else {
+        installMessage.textContent = 'Buka portal ini di Chrome Android. Jika Chrome belum menawarkan instalasi, buka menu ⋮ lalu pilih “Install app” atau “Tambahkan ke layar utama”.';
+      }
+    }
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      if (!installDialog.hidden) updateInstallDialog();
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      installAction.hidden = true;
+      installMessage.textContent = 'Portal berhasil ditambahkan ke ponsel.';
+      installStatus.textContent = 'Portal berhasil dipasang.';
+    });
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== portalFrame.contentWindow) return;
+      if (!event.data || event.data.type !== 'PORTAL_INSTALL_REQUEST') return;
+      updateInstallDialog();
+      installDialog.hidden = false;
+      document.getElementById('install-close').focus();
+    });
+
+    document.getElementById('install-close').addEventListener('click', () => {
+      installDialog.hidden = true;
+    });
+
+    installDialog.addEventListener('click', (event) => {
+      if (event.target === installDialog) installDialog.hidden = true;
+    });
+
+    installAction.addEventListener('click', async () => {
+      installAction.setAttribute('aria-disabled', 'true');
+      try {
+        let accepted = false;
+        if (supportsWebInstall) {
+          await navigator.install();
+          accepted = true;
+        } else if (deferredInstallPrompt) {
+          const promptEvent = deferredInstallPrompt;
+          deferredInstallPrompt = null;
+          await promptEvent.prompt();
+          const choice = await promptEvent.userChoice;
+          accepted = Boolean(choice && choice.outcome === 'accepted');
+        }
+        if (accepted) {
+          installMessage.textContent = 'Portal berhasil ditambahkan ke ponsel.';
+          installStatus.textContent = 'Portal berhasil dipasang.';
+          installAction.hidden = true;
+        } else {
+          installMessage.textContent = 'Instalasi dibatalkan. Anda dapat mencoba lagi kapan saja.';
+          installAction.hidden = !supportsWebInstall;
+        }
+      } catch (error) {
+        installMessage.textContent = error && error.name === 'AbortError'
+          ? 'Instalasi dibatalkan. Anda dapat mencoba lagi kapan saja.'
+          : 'Chrome belum dapat memasang portal. Buka menu ⋮ lalu pilih “Install app” atau “Tambahkan ke layar utama”.';
+        installAction.hidden = !supportsWebInstall && !deferredInstallPrompt;
+      } finally {
+        installAction.removeAttribute('aria-disabled');
+      }
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch((error) => {
+        console.error('Pendaftaran service worker gagal:', error);
+      });
+    }
+  </script>
 </body>
 </html>
